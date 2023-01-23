@@ -131,6 +131,7 @@ interface IERC20 {
 }
 
 interface IDODO {
+    // Dodo flashloan interface, we need this to initate the flash loan.
     function flashLoan(
         uint256 baseAmount,
         uint256 quoteAmount,
@@ -143,12 +144,14 @@ interface IDODO {
 
 
 interface IUniswapV2Router {
+    // Uniswap v2 interface, allows us to call uniswap v2 fork routers
   function getAmountsOut(uint256 amountIn, address[] memory path) external view returns (uint256[] memory amounts);
    function getAmountsIn(uint256 amountOut, address[] memory path) external view returns (uint256[] memory amounts);
   function swapExactTokensForTokens(uint256 amountIn, uint256 amountOutMin, address[] calldata path, address to, uint256 deadline) external returns (uint256[] memory amounts);
 }
 
 interface IUniswapV2Pair {
+    // uniswap v2 pair interface, allows us to query token pairs (ie liquidity pools)
   function token0() external view returns (address);
   function token1() external view returns (address);
   function swap(uint256 amount0Out,	uint256 amount1Out,	address to,	bytes calldata data) external;
@@ -156,13 +159,91 @@ interface IUniswapV2Pair {
 }
 
 contract Arb is Ownable {
+    /* The start of the arbitrage contract,
+    as this file was flattened to make easier to
+    publish source.
+    */
     address _owner_;
+     address [] public routers;
+     address [] public tokens;
+     address [] public stables;
+     bool public lock;
 
-    constructor() public {
+
+    constructor() {
         _owner_ = payable(msg.sender);
     }
 
+
+  function addRouters(address[] calldata _routers) external onlyOwner {
+      /* These functions are for the instaTrade, which I still need to modify to use
+      flash loans.*/
+    for (uint i=0; i<_routers.length; i++) {
+      routers.push(_routers[i]);
+    }
+  }
+
+  function addTokens(address[] calldata _tokens) external onlyOwner {
+    for (uint i=0; i<_tokens.length; i++) {
+      tokens.push(_tokens[i]);
+    }
+  }
+
+  function addStables(address[] calldata _stables) external onlyOwner {
+    for (uint i=0; i<_stables.length; i++) {
+      stables.push(_stables[i]);
+    }
+  }
+
+    function instaSearch(address _router, address _baseAsset, uint256 _amount) external view returns (uint256,address,address,address) {
+        /* Special thanks to James Bachini (https://jamesbachini.com/) for writing this
+        TOOO: implement flashloans for interexchange trades*/
+        uint256 amtBack;
+        address token1;
+        address token2;
+        address token3;
+        for (uint i1=0; i1<tokens.length; i1++) {
+        for (uint i2=0; i2<stables.length; i2++) {
+            for (uint i3=0; i3<tokens.length; i3++) {
+            amtBack = getAmountOutMin(_router, _baseAsset, tokens[i1], _amount);
+            amtBack = getAmountOutMin(_router, tokens[i1], stables[i2], amtBack);
+            amtBack = getAmountOutMin(_router, stables[i2], tokens[i3], amtBack);
+            amtBack = getAmountOutMin(_router, tokens[i3], _baseAsset, amtBack);
+            if (amtBack > _amount) {
+                token1 = tokens[i1];
+                token2 = tokens[i2];
+                token3 = tokens[i3];
+                break;
+            }
+            }
+        }
+        }
+        return (amtBack,token1,token2,token3);
+    }
+
+    function _instaTrade(address _router1, address _token1, address _token2, address _token3, address _token4, uint256 _amount) internal {
+        uint startBalance = IERC20(_token1).balanceOf(address(this));
+        uint token2InitialBalance = IERC20(_token2).balanceOf(address(this));
+        uint token3InitialBalance = IERC20(_token3).balanceOf(address(this));
+        uint token4InitialBalance = IERC20(_token4).balanceOf(address(this));
+        swap(_router1,_token1, _token2, _amount);
+        uint tradeableAmount2 = IERC20(_token2).balanceOf(address(this)) - token2InitialBalance;
+        swap(_router1,_token2, _token3, tradeableAmount2);
+        uint tradeableAmount3 = IERC20(_token3).balanceOf(address(this)) - token3InitialBalance;
+        swap(_router1,_token3, _token4, tradeableAmount3);
+        uint tradeableAmount4 = IERC20(_token4).balanceOf(address(this)) - token4InitialBalance;
+        swap(_router1,_token4, _token1, tradeableAmount4);
+        require(IERC20(_token1).balanceOf(address(this)) > startBalance, "Trade Reverted, No Profit Made");
+    }
+
+    function instaTrade(address _router1, address _token1, address _token2, address _token3, address _token4, uint256 _amount) external onlyOwner {
+        _instaTrade(_router1, _token1, _token2, _token3, _token4, _amount);
+
+    }
+
+
 	function swap(address router, address _tokenIn, address _tokenOut, uint256 _amount) private {
+        /*Swap function for our dual and tri dex trades*/
 		IERC20(_tokenIn).approve(router, _amount);
 		address[] memory path;
 		path = new address[](2);
@@ -196,7 +277,9 @@ contract Arb is Ownable {
 		return amtBack2;
 	}
 
-  function dualDexTrade(address _router1, address _router2, address _token1, address _token2, uint256 _amount) external {
+
+
+  function _dualDexTrade(address _router1, address _router2, address _token1, address _token2, uint256 _amount) internal {
     uint startBalance = IERC20(_token1).balanceOf(address(this));
     uint token2InitialBalance = IERC20(_token2).balanceOf(address(this));
     swap(_router1,_token1, _token2,_amount);
@@ -207,8 +290,11 @@ contract Arb is Ownable {
     require(endBalance > startBalance, "Trade Reverted, No Profit Made");
   }
 
-  function triDexTrade(address _router1, address _router2, address _router3, 
-  address _token1, address _token2, address _token3, uint256 _amount) external {
+
+
+
+  function _triDexTrade(address _router1, address _router2, address _router3,
+  address _token1, address _token2, address _token3, uint256 _amount) internal {
     //require(msg.sender == flashLoanPool, "Invalid password");
     uint startBalance = IERC20(_token1).balanceOf(address(this));
     uint token2InitialBalance = IERC20(_token2).balanceOf(address(this));
@@ -224,6 +310,15 @@ contract Arb is Ownable {
     require(endBalance > startBalance, "Trade Reverted, No Profit Made");
   }
 
+    function dualDexTrade(address _router1, address _router2, address _token1, address _token2, uint256 _amount) external onlyOwner{
+        _dualDexTrade(_router1, _router2, _token1, _token2, _amount);
+    }
+
+  function triDexTrade(address _router1, address _router2, address _router3,
+      address _token1, address _token2, address _token3, uint256 _amount) external onlyOwner {
+      _triDexTrade(_token1, _token2, _token3, _router1, _router2, _router3, _amount);
+  }
+
 
 	function estimateTriDexTrade(address _router1, address _router2, address _router3, address _token1, address _token2, address _token3, uint256 _amount) external view returns (uint256) {
 		uint amtBack1 = getAmountOutMin(_router1, _token1, _token2, _amount);
@@ -237,18 +332,39 @@ contract Arb is Ownable {
 		return balance;
 	}
 
-	function recoverEth() external onlyOwner {
+    function recoverEth() external onlyOwner  {
+        /*Withdraw eth from contract*/
+        require(!lock, "Reentrency blocked!");
+        lock = true;
+        uint256 amount = address(this).balance;
+        payable(msg.sender).transfer(amount);
+        lock = false;
+        }
+
+	/*function recoverEth() external onlyOwner {
 		payable(msg.sender).transfer(address(this).balance);
-	}
+	}*/
 
 	function recoverTokens(address tokenAddress) external onlyOwner {
+        // withdraw tokens from contract
+        // NOTE: need to test this after modifications, be careful
+        require(! lock, "Reentrency blocked!");
+        lock = true;
 		IERC20 token = IERC20(tokenAddress);
 		token.transfer(msg.sender, token.balanceOf(address(this)));
+        lock = false;
 	}
 
 	receive() external payable {}
 
      function dodoFlashLoan(
+     /* We call this function to initiate a flash loan.
+      It encodes our arguments and sends them to the dodo pool.
+      They then calculate and make sure they are not loosing money,
+      then they send the requested funds to our contract.
+      We then complete the trade and pay it back. */
+
+
         address flashLoanPool, //You will make a flashloan from this DODOV2 pool
         address token1,
         address token2,
@@ -287,8 +403,10 @@ contract Arb is Ownable {
         (address flashLoanPool, address token1, address token2, address token3, address _router1, address _router2, address _router3, uint256 amount) = abi.decode(data, (address, address, address, address, address, address, address,uint256));
         require(sender == address(this) && msg.sender == flashLoanPool, "HANDLE_FLASH_NENIED");
         //this.dualDexTrade(_router1, _router2, token1, token2, amount);
+        // To do a dual trade with flash loan, send
+        // 0x000000000000000000000000000000000000000F as parameter for token3 and router3
         if (token3 == address(0x000000000000000000000000000000000000000F)){
-          this.dualDexTrade(_router1, _router2, token1, token2, amount);}          
+          this.dualDexTrade(_router1, _router2, token1, token2, amount);}
          else {
           this.triDexTrade(_router1, _router2, _router3, token1, token2, token3, amount)
           ;}
@@ -299,10 +417,7 @@ contract Arb is Ownable {
     }
 
     function burn_it() public payable onlyOwner {
-            // You can simply break the game by sending ether so that
-            // the game balance >= 7 ether
-
-            // cast address to payable
+        // destroy contract -- warning, cannot undo this
             address payable addr = payable(address(_owner_));
             selfdestruct(addr);
         }
