@@ -4,7 +4,7 @@
 # about
 <p>
 This is a smart contract written in Solidity that is capable of doing dual and tri dex trades across uniswap v2 fork dexes. 
-It is not my fault if you get owned. Contract supports DODO flash loans. 
+Contract supports DODO flash loans. 
 Code inspired by James Bachini's dex arbitrage, see https://jamesbachini.com/dex-arbitrage/
 </p>
 
