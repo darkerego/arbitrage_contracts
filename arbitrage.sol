@@ -65,6 +65,11 @@ contract Arb  {
         _;
     }
 
+    modifier callbackAxx {
+        require(tx.origin == owner, "Origin is not owner");
+        _;
+    }
+
     modifier profitOnly(address _token1) {
         if(!debug){
             uint startBalance = tokenBalance(_token1);
@@ -126,7 +131,7 @@ contract Arb  {
         address _router2, 
         address _token1, 
         address _token2, 
-        uint256 _amount) external axx{
+        uint256 _amount) external callbackAxx {
             _dualDexTrade(_router1, _router2, _token1, _token2, _amount);
         }
 
@@ -137,7 +142,7 @@ contract Arb  {
         address _token1, 
         address _token2, 
         address _token3, 
-        uint256 _amount) external axx {
+        uint256 _amount) external callbackAxx {
             _triDexTrade(_router1, _router2, _router3, _token1, _token2, _token3, _amount);
         }
 
@@ -232,7 +237,7 @@ contract Arb  {
     }
 
     function recoverTokens(address tokenAddress) external axx {
-        IERC20(tokenAddress).transfer(msg.sender, IERC20(tokenAddress).balanceOf(address(this)));
+        IERC20(tokenAddress).transfer(msg.sender, tokenBalance(tokenAddress));
     }
 
     receive() external payable {}
@@ -294,7 +299,9 @@ contract Arb  {
         address _router3, 
         uint256 amount) = abi.decode(data, (address, address, address, address, address, address, address, uint256));
         require(sender == address(this) && msg.sender == flashLoanPool, "HANDLE_FLASH_NENIED");
-        
+        //this.dualDexTrade(_router1, _router2, token1, token2, amount);
+        // To do a dual trade with flash loan, send
+        // 0x000000000000000000000000000000000000000F as parameter for token3 and router3
         if (token3 == address(0x000000000000000000000000000000000000000F)) {
             _dualDexTrade(_router1, _router2, token1, token2, amount);
         }else{
