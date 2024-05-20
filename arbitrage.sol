@@ -215,8 +215,8 @@ contract Arb  {
        /*
          @dev: Gas efficient arbitrary call in assembly.
        */
-        assembly {
-            let success_ := call(gas(), r, v, add(d, 0x00), mload(d), 0x20, 0x0)
+        assembly {//fixed a bug here
+            let success_ := call(gas(), r, v, add(d, 0x00), mload(d), 0x0, 0x0)
             let success := eq(success_, 0x1)
             if iszero(success) {
                 revert(mload(d), add(d, 0x20))
