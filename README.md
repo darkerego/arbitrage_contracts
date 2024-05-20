@@ -10,9 +10,10 @@ execution of trades. I have not quite yet decided whether I want to open source 
 let me know and I will consider it. 
 </p>
 
+# TODO
 <p>
-Disclaimer: I only started writing Solidity a couple of months ago and this code is probably not very great and although 
-I have tried to follow best practice there could be security issues, as it has not been audited by a professional.
+  - don't store tokens on the contract, pull with `transferfrom`
+  - add uniswap v3 support
 </p>
 
 # deployment
